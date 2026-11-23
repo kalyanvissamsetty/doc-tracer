@@ -119,7 +119,7 @@ def test_sandbox_command_and_cgroup_guard(tmp_path, monkeypatch):
     assert "--privileged" not in command and "--volume" not in command
     script = Path(__file__).parents[2] / "docker" / "sandbox_entry.py"
     guard = run_path(str(script))["limited"]
-    monkeypatch.setattr("os.getuid", lambda: 65534)
+    monkeypatch.setattr("os.getuid", lambda: 65534, raising=False)
     for name, data in {"cpu.max": "50000 100000", "memory.max": str(128 * 1024 * 1024),
                        "memory.swap.max": "0", "pids.max": "16"}.items():
         (tmp_path / name).write_text(data)
@@ -128,13 +128,17 @@ def test_sandbox_command_and_cgroup_guard(tmp_path, monkeypatch):
     assert not guard(tmp_path)
 
 
-def test_sandbox_rejects_large_input_and_limits_output(tmp_path):
+def test_sandbox_rejects_large_input(tmp_path):
     tracer = JsonlTracer(tmp_path / "trace.jsonl")
     with pytest.raises(SandboxError, match="input size"):
         run_python("sensitive sample" * 5000, tracer=tracer)
     event = json.loads(tracer.path.read_text())
     assert event["status"] == "rejected"
     assert "sensitive" not in tracer.path.read_text()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="The sandbox pipe reader uses POSIX selectors.")
+def test_sandbox_limits_output():
     with subprocess.Popen([sys.executable, "-c", "print('x' * 20000)"],
                           stdout=subprocess.PIPE, stderr=subprocess.PIPE) as process:
         with pytest.raises(SandboxError, match="output limit"):

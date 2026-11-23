@@ -78,6 +78,8 @@ def run_python(code: str, *, tracer: Tracer) -> SandboxResult:
         content = code.encode("utf-8")
         if not content or len(content) > MAX_CODE:
             raise SandboxError("Supply sandbox code within the input size limit.")
+        if os.name == "nt":
+            raise SandboxError("Run the Python fallback from a Linux or macOS host, or inside WSL.")
         with TemporaryFile() as source:
             source.write(content)
             source.seek(0)

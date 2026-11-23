@@ -55,7 +55,7 @@ With the terminal in the `doc-tracer` folder, run:
 .venv/bin/python -m redline.eval
 ```
 
-The evaluator runs the two included synthetic PDF pairs. Live Azure tests are opt-in. Some Azure adapter tests also skip unless you install the `azure` extra.
+The evaluator runs the two included synthetic PDF pairs. Live Azure tests are opt-in. Some Azure adapter tests also skip unless you install the `azure` extra. The optional Docker sandbox uses POSIX pipes and requires a Docker host with cgroup v2 enforcement.
 
 ## Optional Azure mode
 
