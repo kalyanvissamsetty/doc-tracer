@@ -15,11 +15,12 @@ from pydantic import BaseModel, ConfigDict, Field
 from redline.agent.budget import Budget, MeteredChat
 from redline.agent.discovery import Discovery, PdfCropRef, discover_changes, page_dpi
 from redline.llm.region_reader import RegionContext, read_region_pair
-from redline.models import Change, ChangeLog, Cost
+from redline.models import Change, ChangeLog, Cost, GeometryEdit
 from redline.review import render_preview
 from redline.sandbox import SandboxError, run_python
 from redline.storage import LocalStorage
 from redline.toolkit import normalize_value, render_page, view_crop, view_page, write_markup
+from redline.toolkit.geometry import snap_to_detected_cell
 from redline.tracing import Tracer
 
 
@@ -72,6 +73,7 @@ REGISTRY = {
     "discover": Tool(Args, "Use first to pair pages and inventory evidence. Use once per job. Returns counts."),
     "list_candidates": Tool(ListArgs, "Use after discovery for 12 candidate summaries at an offset. Do not request it before discovery. Returns candidate IDs, types, evidence, and reading availability."),
     "read_candidate": Tool(CandidateArgs, "Use to interpret an ambiguous raster candidate with paired crops. Do not use for structural or page-level candidates. Returns an updated evidence-backed candidate."),
+    "snap_to_cell": Tool(CandidateArgs, "Use when a value box needs to align with one ruled cell. Do not use for whole rows or ambiguous evidence spanning multiple cells. Returns the detected cell and revised bounds. Write and review again after a successful snap."),
     "write_markup": Tool(Args, "Use after discovering and reviewing candidates. Do not write before discovery or after the three-round limit. Returns revision and required review pages."),
     "view_page": Tool(PageArgs, "Use after writing markup to inspect a required V2 page visually. Do not use for old revisions or unrelated pages. Returns the marked page and a review ID."),
     "review_page": Tool(ReviewArgs, "Use only after seeing the current page image. Do not approve incorrect or illegible marks. Records pass or fail for the current revision and view ID."),
@@ -116,6 +118,8 @@ class JobTools:
         self.written_digest: str | None = None
         self.written_candidate_revision = -1
         self.candidate_revision = 0
+        self.geometry_edits: list[GeometryEdit] = []
+        self.comment_only_tags: dict[int, list[int]] = {}
         self.delivered = False
 
     @property
@@ -194,13 +198,33 @@ class JobTools:
         }
 
     def _tool_list_candidates(self, offset: int) -> ToolResult:
-        changes = self._changes()
-        batch = changes[offset:offset + 12]
+        located = [(group.v2_page, change) for group in self.discovery.pages for change in group.changes]
+        batch = located[offset:offset + 12]
         next_offset = offset + len(batch)
         return ToolResult({
-            "items": [self._summary(change) for change in batch],
-            "next_offset": next_offset if next_offset < len(changes) else None,
+            "items": [{**self._summary(change), "v2_page": page, "bbox_v2": change.bbox_v2}
+                      for page, change in batch],
+            "next_offset": next_offset if next_offset < len(located) else None,
         })
+
+    def _tool_snap_to_cell(self, change_id: int) -> ToolResult:
+        if self.revision >= 3:
+            raise ToolError("No markup rounds remain for reviewing a geometry repair.")
+        for group in self.discovery.pages:
+            for change in group.changes:
+                if change.id != change_id:
+                    continue
+                if group.v2_page is None:
+                    raise ToolError("This change has no revised page.")
+                try:
+                    edit = snap_to_detected_cell(self.v2, group.v2_page, change, actor="agent")
+                except ValueError as exc:
+                    raise ToolError(str(exc)) from None
+                change.bbox_v2 = edit.after
+                self.geometry_edits.append(edit)
+                self.candidate_revision += 1
+                return ToolResult(edit.model_dump())
+        raise ToolError("Change ID was not found.")
 
     def _tool_read_candidate(self, change_id: int) -> ToolResult:
         refs = self.discovery.crops.get(change_id)
@@ -262,7 +286,7 @@ class JobTools:
                 input_tokens=self.budget.input_tokens, output_tokens=self.budget.output_tokens,
                 estimated_usd=float(self.budget.spent),
             ),
-            pages=self.discovery.pages,
+            pages=self.discovery.pages, geometry_edits=self.geometry_edits, comment_only_tags=self.comment_only_tags,
         )
 
     def _expected(self, page: int) -> list[Change]:
@@ -275,7 +299,7 @@ class JobTools:
         if self.revision >= 3:
             raise ToolError("The three markup rounds have been used.")
         log = self._log()
-        write_markup(
+        self.comment_only_tags = write_markup(
             self.v2, log, self.pdf_path, show_cosmetic=self.show_cosmetic,
             annotation_subject=self.annotation_subject,
         )
@@ -332,7 +356,7 @@ class JobTools:
         self.approved.discard(page)
         return ToolResult({
             "revision": self.revision, "page": page, "view_id": view_id, "baseline_id": baseline_id,
-            "marked_changes": len(expected),
+            "marked_changes": len(expected), "comment_only_tags": self.comment_only_tags.get(page, []),
         }, image_id)
 
     def _check_visible_boxes(self, boxes, width, height, baseline_id, image_id) -> None:

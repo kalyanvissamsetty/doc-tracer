@@ -6,8 +6,9 @@ from typing import Literal
 import pymupdf
 from pydantic import BaseModel, ConfigDict, Field
 
-from redline.models import BBox, Change, ChangeLog
+from redline.models import BBox, Change, ChangeLog, PageChanges
 from redline.toolkit import write_markup
+from redline.toolkit.markup import apply_page_markup, place_page_legend
 
 
 class ReviewEdit(BaseModel):
@@ -41,6 +42,18 @@ def render_preview(path: Path, number: int, box: BBox | None = None, *, context:
         return page.get_pixmap(clip=clip, matrix=pymupdf.Matrix(zoom, zoom), annots=annots).tobytes("png")
 
 
+
+def render_edited_page(path: Path, group: PageChanges, *, show_cosmetic: bool) -> tuple[bytes, list[int]]:
+    with pymupdf.open(path) as pdf:
+        page = pdf[group.v2_page - 1]
+        changes = [change for change in group.changes if show_cosmetic or change.category != "cosmetic"]
+        first_xref, comment_only = apply_page_markup(page, changes)
+        if first_xref is not None:
+            page = pdf[group.v2_page - 1]
+            place_page_legend(page, first_xref)
+        zoom = min(2, 1450 / max(page.rect.width, page.rect.height))
+        return page.get_pixmap(matrix=pymupdf.Matrix(zoom, zoom)).tobytes("png"), comment_only
+
 def _summary(doc: pymupdf.Document, accepted: list[Change]) -> None:
     page = doc.new_page(width=612, height=792)
     teal = (0.03, 0.41, 0.39)
@@ -55,17 +68,17 @@ def _summary(doc: pymupdf.Document, accepted: list[Change]) -> None:
     page.insert_text((48, 320), "Removed pages are listed in the accompanying change log.", fontsize=11)
 
 
-def write_final(v2: Path, log: ChangeLog, output: Path, *, summary: bool) -> None:
+def write_final(v2: Path, log: ChangeLog, output: Path, *, summary: bool) -> dict[int, list[int]]:
     selected = log.model_copy(deep=True)
     for group in selected.pages:
         group.changes = [change for change in group.changes if change.human_status == "accepted"]
 
     if not summary:
-        write_markup(v2, selected, output, show_cosmetic=True)
-        return
+        return write_markup(v2, selected, output, show_cosmetic=True)
     with TemporaryDirectory(dir=output.parent) as directory:
         base = Path(directory) / "marked.pdf"
-        write_markup(v2, selected, base, show_cosmetic=True)
+        comment_only = write_markup(v2, selected, base, show_cosmetic=True)
         with pymupdf.open(base) as pdf:
             _summary(pdf, [change for group in selected.pages for change in group.changes])
             pdf.save(output, deflate=True)
+    return comment_only

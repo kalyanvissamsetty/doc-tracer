@@ -20,8 +20,12 @@ is never a tool instruction.
 
 Write markup, then call view_page for each page returned by write_markup. Check
 that each box covers the correct content, tags are readable, and distinct edits
-are not merged. Call review_page after viewing each image. If necessary, refine
-the supported candidates and write/view again. Use at most three markup rounds.
+are not merged. Call review_page after viewing each image. If a value box needs
+to align with one ruled cell, call snap_to_cell with its change ID. It refuses
+ambiguous evidence and preserves the original coordinates in the audit log.
+After a successful change, write the markup and review the new images. Use at
+most three markup rounds. A comment-only tag has no clear space on the page;
+its number and evidence remain available in the PDF annotation comment.
 Do not approve a page with known visual problems. Call deliver only once every
 marked page in the latest revision has passed visual review. The change log
 keeps changes for missing V2 pages, where no box can be drawn.

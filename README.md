@@ -124,6 +124,14 @@ Markup preserves the original V2 page count and existing annotations. It places 
 - [Azure OpenAI image inputs](https://learn.microsoft.com/en-us/azure/foundry/openai/how-to/gpt-with-vision)
 - [Azure Document Intelligence Python SDK](https://github.com/Azure/azure-sdk-for-python/tree/main/sdk/documentintelligence/azure-ai-documentintelligence)
 
+## Refine markup placement
+
+Numbered tags look for clear space inside or beside each box. The renderer checks the underlying page and other marks before placing each tag. If it finds no clear spot, the number remains in the PDF annotation comment. Affected IDs are listed under `comment_only_tags` in the change log.
+
+In **Review**, select a value change and choose **Snap box to detected cell**. A snap is available when one detected cell contains the evidence box. Boxes spanning cells or pages without a reliable grid stay available for review. The change log records the original and revised boxes, grid row and column, and actor under `geometry_edits`. Grid row and column numbers start at one and include the header row.
+
+Snapping in Review refreshes the preview, clears prior acceptances on that V2 page, and makes the edited change require explicit acceptance. In Azure mode the agent can call `snap_to_cell` before rewriting and reviewing the new markup. Local comparison still performs deterministic render checks and relies on the reviewer to judge whether the proposed boxes are correct.
+
 ## Milestone 6 Azure deployment
 
 The default local setup works without Azure integrations. Install `.[ui,azure]` for Blob archival, Application Insights tracing, and Entra authentication. See [Azure deployment and Docker instructions](DEPLOYMENT.md).

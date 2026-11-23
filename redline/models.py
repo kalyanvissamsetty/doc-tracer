@@ -77,6 +77,16 @@ class Cost(BaseModel):
     estimated_usd: float = Field(default=0, ge=0)
 
 
+class GeometryEdit(BaseModel):
+    change_id: int = Field(ge=1)
+    v2_page: int = Field(ge=1)
+    before: BBox
+    after: BBox
+    row: int = Field(ge=1)
+    column: int = Field(ge=1)
+    actor: Literal["agent", "reviewer"]
+
+
 class ChangeLog(BaseModel):
     job_id: str
     v1: str
@@ -84,3 +94,5 @@ class ChangeLog(BaseModel):
     model_deployments: dict[str, str] = Field(default_factory=dict)
     cost: Cost = Field(default_factory=Cost)
     pages: list[PageChanges] = Field(default_factory=list)
+    geometry_edits: list[GeometryEdit] = Field(default_factory=list)
+    comment_only_tags: dict[int, list[int]] = Field(default_factory=dict)

@@ -13,8 +13,8 @@ from redline.cloud import CloudServices
 from redline.config import ConfigurationError, JobDefaults, load_cloud_settings, load_job_defaults, load_settings
 from redline.eval import run_suite
 from redline.jobs import JobService, ReviewConflict, read_trace
-from redline.models import ChangeLog
-from redline.review import ReviewEdit, render_preview
+from redline.models import ChangeLog, PageChanges
+from redline.review import ReviewEdit, render_edited_page, render_preview
 from redline.storage import LocalStorage
 from redline.validation import ValidationReport
 
@@ -27,6 +27,7 @@ TOOLS = {
     "list_candidates": "Inspect change evidence",
     "read_candidate": "Read a pair of crops",
     "write_markup": "Write the proposed redline",
+    "snap_to_cell": "Align a box to a detected table cell",
     "view_page": "Render a page for verification",
     "review_page": "Review the rendered page",
     "deliver": "Deliver the verified revision",
@@ -51,6 +52,11 @@ def jobs() -> JobService:
 def preview(path: Path, page: int, box=None) -> bytes:
     return render_preview(path, page, box)
 
+
+
+@st.cache_data(show_spinner=False, max_entries=64)
+def preview_edited(path: Path, page_json: str, show_cosmetic: bool) -> tuple[bytes, list[int]]:
+    return render_edited_page(path, PageChanges.model_validate_json(page_json), show_cosmetic=show_cosmetic)
 
 def _chrome():
     st.markdown("""
@@ -273,6 +279,11 @@ def _review_change(service, job, group, change, folder):
         if reject.button("Reject", key=f"reject-{job['id']}-{change.id}", width="stretch"):
             _update(service, job, "reject", change.id)
 
+        if group.v2_page is not None and change.category == "value" and change.bbox_v2 is not None:
+            if st.button("Snap box to detected cell", key=f"snap-{job['id']}-{change.id}",
+                         help="Keeps the original evidence and resets accepted changes on this page for review."):
+                _update(service, job, "snap_to_cell", change.id)
+
         with st.expander("Edit change"):
             with st.form(f"edit-{job['id']}-{change.id}-{job['revision']}"):
                 field = st.text_input("Field", value=change.field)
@@ -321,7 +332,18 @@ def review_page(service: JobService):
             st.caption("This removed page is listed in the change log.")
             st.image(preview(service.inputs(job)[0], group.v1_page), width="stretch")
         else:
-            st.image(preview(folder / "redline.pdf", group.v2_page), width="stretch")
+            if any(edit.v2_page == group.v2_page and edit.actor == "reviewer" for edit in log.geometry_edits):
+                marked, comment_only = preview_edited(
+                    service.inputs(job)[1], group.model_dump_json(), bool(job["show_cosmetic"]),
+                )
+                st.caption("Geometry edited. Review the revised boxes before accepting.")
+            else:
+                marked = preview(folder / "redline.pdf", group.v2_page)
+                comment_only = log.comment_only_tags.get(group.v2_page, [])
+            st.image(marked, width="stretch")
+            if comment_only:
+                ids = ", ".join(f"#{number}" for number in comment_only)
+                st.caption(f"See PDF annotation comments for {ids}. The page had no clear space for those tags.")
     with right:
         on_page = [c for c in group.changes if job["show_cosmetic"] or c.category != "cosmetic"]
         st.subheader("Proposed changes")

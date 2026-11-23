@@ -17,6 +17,7 @@ from redline.models import ChangeLog
 from redline.review import ReviewEdit, find_change, write_final
 from redline.storage import LocalStorage
 from redline.storage.blob import ArtifactArchiveError, archive_artifacts
+from redline.toolkit.geometry import snap_to_detected_cell
 from redline.tracing import JsonlTracer
 
 
@@ -176,6 +177,19 @@ class JobService:
                     for name, value in edit.model_dump().items():
                         setattr(change, name, value)
                     change.human_status = "edited"
+                elif action == "snap_to_cell":
+                    group = next(group for group in log.pages if any(item.id == change_id for item in group.changes))
+                    if group.v2_page is None:
+                        raise ValueError("This change has no revised page.")
+                    geometry = snap_to_detected_cell(self.inputs(job)[1], group.v2_page, change, actor="reviewer")
+                    change.bbox_v2 = geometry.after
+                    log.geometry_edits.append(geometry)
+                    for page in log.pages:
+                        if page.v2_page == group.v2_page:
+                            for item in page.changes:
+                                if item.human_status == "accepted":
+                                    item.human_status = "pending"
+                    change.human_status = "edited"
                 else:
                     raise ValueError("Unknown review action.")
             conn.execute("UPDATE jobs SET review_log=?,revision=revision+1,final_revision=NULL WHERE id=?",
@@ -188,7 +202,7 @@ class JobService:
             output = directory / f"final-{revision}.pdf"
             if job["final_revision"] == revision and output.is_file():
                 return
-            write_final(self.inputs(job)[1], log, output, summary=bool(job["summary"]))
+            log.comment_only_tags = write_final(self.inputs(job)[1], log, output, summary=bool(job["summary"]))
             json_name = f"final-{revision}.json"
             LocalStorage(directory).write(json_name, log.model_dump_json(indent=2).encode())
             if self.cloud and self.cloud.store:

@@ -18,7 +18,7 @@ EVENTS = {
     "verified_delivery", "job_completed", "job_failed", "validation", "archive", "sandbox_execution",
 }
 TOOLS = {
-    "discover", "list_candidates", "read_candidate", "write_markup", "view_page", "review_page", "deliver", "run_python",
+    "discover", "list_candidates", "read_candidate", "snap_to_cell", "write_markup", "view_page", "review_page", "deliver", "run_python",
 }
 
 
