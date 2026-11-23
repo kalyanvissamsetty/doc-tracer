@@ -15,7 +15,7 @@ from redline.toolkit import (
     compare_embedded_images, detect_table_grid, extract_table, match_rows,
     compare_scanned_drawing, normalize_value, pair_pages, split_annotation_layer, vector_diff, view_page,
 )
-from redline.toolkit.visual import pixel_diff
+from redline.toolkit.visual import difference_mask
 
 
 @dataclass(frozen=True)
@@ -225,11 +225,13 @@ def _raster_candidates(old: PageImage, new: PageImage, covered: list[BBox]):
     scaled = old.pixels
     if scaled.shape != new.pixels.shape:
         scaled = cv2.resize(old.pixels, (width, height), interpolation=cv2.INTER_AREA)
-    mask = np.zeros((height, width), np.uint8)
-    for region in pixel_diff(scaled, new.pixels, threshold=30, min_area=4):
-        x0, y0, x1, y1 = map(int, region.bbox)
-        if not any(_covers(new.pdf_box(region.bbox), box) for box in covered):
-            mask[y0:y1, x0:x1] = 1
+    mask = difference_mask(scaled, new.pixels, threshold=30)
+    _, labels, stats, _ = cv2.connectedComponentsWithStats(mask, connectivity=8)
+    for label, (x, y, w, h, area) in enumerate(stats[1:], 1):
+        span = (x, y, x + w, y + h)
+        if area < 4 or any(_covers(new.pdf_box(span), box) for box in covered):
+            patch = np.s_[y:y + h, x:x + w]
+            mask[patch][labels[patch] == label] = 0
     merged = cv2.dilate(mask, np.ones((3, 11), np.uint8))
     count, labels, _, _ = cv2.connectedComponentsWithStats(merged)
     ys, xs = np.nonzero(mask)
@@ -240,10 +242,31 @@ def _raster_candidates(old: PageImage, new: PageImage, covered: list[BBox]):
     np.minimum.at(min_y, memberships, ys)
     np.maximum.at(max_x, memberships, xs + 1)
     np.maximum.at(max_y, memberships, ys + 1)
+    grid_extent = None
+    grid_checked = False
     for i in range(1, count):
         x0, y0, x1, y1 = min_x[i], min_y[i], max_x[i], max_y[i]
         box = new.pdf_box((x0, y0, x1, y1))
         old_box = _map_box(box, new.page, old.page)
+        # A connected table grid or scan shift can span most of the sheet. Pixel
+        # connectivity at that scale is insufficient to mark a value change.
+        area_fraction = (x1 - x0) * (y1 - y0) / (width * height)
+        if .08 <= area_fraction < .28 and not grid_checked:
+            grid_checked = True
+            grid = detect_table_grid(new.pixels)
+            if grid and len(grid.x_rules) >= 3 and len(grid.y_rules) >= 4:
+                grid_extent = pymupdf.Rect(grid.x_rules[0], grid.y_rules[0], grid.x_rules[-1], grid.y_rules[-1])
+        spans_table = grid_extent is not None and (
+            (pymupdf.Rect(x0, y0, x1, y1) & grid_extent).get_area() >= .9 * grid_extent.get_area()
+        )
+        if area_fraction >= .28 or spans_table:
+            yield dict(
+                type="modification", category="value", field="Unlocalized raster difference",
+                bbox_v1=old_box, bbox_v2=box, confidence=0.4,
+                evidence="Connected pixel differences span a substantial part of the page.",
+                markup_withheld_reason="This difference is too broad to locate a changed value. Review the source pages or use cell-level extraction.",
+            ), None
+            continue
         # Empty white regions provide direct evidence of additions or deletions.
         a = scaled[y0:y1, x0:x1]
         b = new.pixels[y0:y1, x0:x1]

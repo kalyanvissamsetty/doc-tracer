@@ -195,6 +195,7 @@ class JobTools:
             "id": change.id, "type": change.type, "category": change.category,
             "field": change.field[:150], "evidence": change.evidence,
             "confidence": change.confidence, "can_read": change.id in self.discovery.crops,
+            "markup_withheld_reason": change.markup_withheld_reason,
         }
 
     def _tool_list_candidates(self, offset: int) -> ToolResult:
@@ -292,7 +293,7 @@ class JobTools:
     def _expected(self, page: int) -> list[Change]:
         return [
             change for group in self.discovery.pages if group.v2_page == page for change in group.changes
-            if self.show_cosmetic or change.category != "cosmetic"
+            if change.should_draw(show_cosmetic=self.show_cosmetic)
         ]
 
     def _tool_write_markup(self) -> ToolResult:

@@ -266,7 +266,9 @@ def _review_change(service, job, group, change, folder):
         st.markdown(f"**#{change.id} · {change.type.title()}**")
         st.text(change.field)
         st.caption(f"{change.confidence:.0%} confidence · {change.human_status.title()}")
-        if change.needs_review:
+        if change.markup_withheld_reason:
+            st.warning(change.markup_withheld_reason)
+        elif change.needs_review:
             st.warning("Low confidence. Check both versions before accepting.")
         st.text(f"V1  {change.v1_value or '—'}")
         st.text(f"V2  {change.v2_value or '—'}")
@@ -274,12 +276,14 @@ def _review_change(service, job, group, change, folder):
         if change.review_request_status:
             st.text(f"Review request: {change.review_request_status.replace('_', ' ')}")
         accept, reject = st.columns(2)
-        if accept.button("Accept", key=f"accept-{job['id']}-{change.id}", width="stretch"):
+        if accept.button("Accept", key=f"accept-{job['id']}-{change.id}", width="stretch",
+                         disabled=change.markup_withheld_reason is not None):
             _update(service, job, "accept", change.id)
         if reject.button("Reject", key=f"reject-{job['id']}-{change.id}", width="stretch"):
             _update(service, job, "reject", change.id)
 
-        if group.v2_page is not None and change.category == "value" and change.bbox_v2 is not None:
+        if (group.v2_page is not None and change.category == "value" and change.bbox_v2 is not None
+                and change.markup_withheld_reason is None):
             if st.button("Snap box to detected cell", key=f"snap-{job['id']}-{change.id}",
                          help="Keeps the original evidence and resets accepted changes on this page for review."):
                 _update(service, job, "snap_to_cell", change.id)
@@ -319,7 +323,9 @@ def review_page(service: JobService):
     folder = service.directory(job)
     changes = [c for page in log.pages for c in page.changes if job["show_cosmetic"] or c.category != "cosmetic"]
     accepted = sum(c.human_status == "accepted" for c in changes)
-    st.caption(f"{len(changes)} proposed · {accepted} accepted")
+    unlocalized = sum(c.markup_withheld_reason is not None for c in changes)
+    detail = f" · {unlocalized} unlocalized" if unlocalized else ""
+    st.caption(f"{len(changes)} proposed · {accepted} accepted{detail}")
     left, right = st.columns([1.25, 1], gap="large")
     with left, st.container(border=True):
         def page_title(index):
@@ -348,7 +354,8 @@ def review_page(service: JobService):
         on_page = [c for c in group.changes if job["show_cosmetic"] or c.category != "cosmetic"]
         st.subheader("Proposed changes")
         if st.button("Accept all high-confidence", disabled=not any(
-            c.human_status == "pending" and c.confidence >= 0.7 for c in changes
+            c.human_status == "pending" and c.confidence >= 0.7 and c.markup_withheld_reason is None
+            for c in changes
         )):
             _update(service, job, "accept_high")
         if on_page:

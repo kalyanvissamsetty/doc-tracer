@@ -176,3 +176,45 @@ def test_snap_rejects_a_cell_with_an_unreported_internal_rule(tmp_path, monkeypa
     )
     with pytest.raises(ValueError, match="another ruling"):
         snap_to_detected_cell(path, 1, change, actor="agent")
+
+
+@pytest.mark.parametrize("table_width,table_height", [(300, 256), (180, 140)])
+def test_raster_grid_shift_stays_in_review_without_highlighting_table(tmp_path, table_width, table_height):
+    from redline.models import ChangeLog
+    from redline.agent.loop import run_comparison
+
+    paths = [tmp_path / "original.pdf", tmp_path / "revised.pdf"]
+    for offset, path in zip((0, 4), paths):
+        with pymupdf.open() as pdf:
+            page = pdf.new_page(width=380, height=340)
+            page.insert_text((35, 30), "Bill of materials")
+            left, top = 30 + offset, 49 + offset
+            for column in range(5):
+                x = left + column * table_width / 4
+                page.draw_line((x, top), (x, top + table_height))
+            for row in range(7):
+                y = top + row * table_height / 6
+                page.draw_line((left, y), (left + table_width, y))
+            if offset:
+                page.draw_rect((352, 20, 361, 29), color=(0, 0, 0), fill=(0, 0, 0))
+            pdf.save(path)
+
+    # A grid may be detected via the same connected run or via separate scan lines.
+    # Keep the regression deterministic by comparing a scan grid with its raster omitted.
+    if table_width < 200:
+        with pymupdf.open() as pdf:
+            page = pdf.new_page(width=380, height=340)
+            page.insert_text((35, 30), "Bill of materials")
+            pdf.save(paths[0])
+
+    root = tmp_path / "job"
+    result = run_comparison(*paths, root=root, budget=Budget(40, Decimal(5)), tracer=JsonlTracer(root / "trace.jsonl"))
+    log = ChangeLog.model_validate_json(result.changes.read_bytes())
+    changed = log.pages[0].changes
+    broad = [change for change in changed if change.markup_withheld_reason]
+    assert broad and all(change.needs_review and not change.should_draw(show_cosmetic=True) for change in broad)
+    with pymupdf.open(result.pdf) as pdf:
+        page = pdf[0]
+        marks = list(page.annots())
+        assert marks and all(mark.info["title"] not in {f"Redline #{change.id}" for change in broad} for mark in marks)
+        assert any(mark.rect.x0 > 345 and mark.rect.y1 < 34 for mark in marks)

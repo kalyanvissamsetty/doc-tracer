@@ -126,6 +126,8 @@ Markup preserves the original V2 page count and existing annotations. It places 
 
 ## Refine markup placement
 
+If the raster fallback groups differences across a large part of a page, the change log records an **Unlocalized raster difference** for review. The app leaves its box off the PDF. This keeps scan shifts and connected table lines from highlighting the entire table while preserving the evidence for review.
+
 Numbered tags look for clear space inside or beside each box. The renderer checks the underlying page and other marks before placing each tag. If it finds no clear spot, the number remains in the PDF annotation comment. Affected IDs are listed under `comment_only_tags` in the change log.
 
 In **Review**, select a value change and choose **Snap box to detected cell**. A snap is available when one detected cell contains the evidence box. Boxes spanning cells or pages without a reliable grid stay available for review. The change log records the original and revised boxes, grid row and column, and actor under `geometry_edits`. Grid row and column numbers start at one and include the header row.

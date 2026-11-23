@@ -46,7 +46,7 @@ def render_preview(path: Path, number: int, box: BBox | None = None, *, context:
 def render_edited_page(path: Path, group: PageChanges, *, show_cosmetic: bool) -> tuple[bytes, list[int]]:
     with pymupdf.open(path) as pdf:
         page = pdf[group.v2_page - 1]
-        changes = [change for change in group.changes if show_cosmetic or change.category != "cosmetic"]
+        changes = [change for change in group.changes if change.should_draw(show_cosmetic=show_cosmetic)]
         first_xref, comment_only = apply_page_markup(page, changes)
         if first_xref is not None:
             page = pdf[group.v2_page - 1]

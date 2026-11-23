@@ -166,11 +166,13 @@ class JobService:
                     for change in page.changes:
                         if (
                             change.human_status == "pending" and change.confidence >= 0.7
-                            and (job["show_cosmetic"] or change.category != "cosmetic")
+                            and change.should_draw(show_cosmetic=bool(job["show_cosmetic"]))
                         ):
                             change.human_status = "accepted"
             else:
                 change = find_change(log, change_id)
+                if action == "accept" and change.markup_withheld_reason:
+                    raise ValueError(change.markup_withheld_reason)
                 if action in {"accept", "reject"}:
                     change.human_status = "accepted" if action == "accept" else "rejected"
                 elif action == "edit" and edit is not None:

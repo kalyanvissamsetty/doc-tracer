@@ -92,7 +92,7 @@ def _match(scores: np.ndarray) -> list[tuple[int, int]]:
 def score(log: ChangeLog, golden: GoldenCase, *, pages: int, elapsed: float) -> Stats:
     predictions = [
         (group.v1_page, group.v2_page, change)
-        for group in log.pages for change in group.changes if change.category != "cosmetic"
+        for group in log.pages for change in group.changes if change.should_draw(show_cosmetic=False)
     ]
     expected = golden.changes
     geometry = np.zeros((len(expected), len(predictions)))

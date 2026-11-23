@@ -34,6 +34,8 @@ def snap_to_detected_cell(
     path: Path, page_number: int, change: Change, *, actor: Literal["agent", "reviewer"]
 ) -> GeometryEdit:
     """Propose the unique detected cell covering the existing evidence box."""
+    if change.markup_withheld_reason is not None:
+        raise ValueError(change.markup_withheld_reason)
     if change.category != "value" or change.bbox_v2 is None:
         raise ValueError("Only individual value changes can snap to a detected cell.")
     evidence = pymupdf.Rect(change.bbox_v2)

@@ -58,11 +58,15 @@ class Change(BaseModel):
     evidence: str = Field(min_length=1)
     confidence: float = Field(ge=0, le=1)
     review_request_status: str | None = None
+    markup_withheld_reason: str | None = None
     human_status: Literal["pending", "accepted", "rejected", "edited"] = "pending"
 
     @property
     def needs_review(self) -> bool:
-        return self.confidence < 0.7
+        return self.confidence < 0.7 or self.markup_withheld_reason is not None
+
+    def should_draw(self, *, show_cosmetic: bool) -> bool:
+        return self.markup_withheld_reason is None and (show_cosmetic or self.category != "cosmetic")
 
 
 class PageChanges(PagePair):

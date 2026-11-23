@@ -164,7 +164,7 @@ def write_markup(
             if not 1 <= group.v2_page <= len(pdf):
                 raise ValueError(f"Invalid V2 page {group.v2_page}.")
             by_page.setdefault(group.v2_page, []).extend(
-                change for change in group.changes if show_cosmetic or change.category != "cosmetic"
+                change for change in group.changes if change.should_draw(show_cosmetic=show_cosmetic)
             )
         for number, page_changes in sorted(by_page.items()):
             page = pdf[number - 1]
