@@ -1,0 +1,20 @@
+# Fill in approved engineering limits for your workflow. Runtime values are never inferred from regulations.
+# Null thresholds leave the corresponding check for human review.
+minimum_pressure: null
+maximum_pressure: null
+minimum_duration: null
+
+fields:
+  pressure: [test pressure, actual test pressure, applied pressure]
+  pressure_min: [minimum allowable pressure, min allowable pressure, minimum test pressure]
+  pressure_max: [maximum allowable pressure, max allowable pressure, maximum test pressure]
+  duration: [test duration, hold duration, hold time, duration]
+  medium: [test medium, pressure medium, medium]
+  chart_required: [test chart required, pressure chart required, chart required]
+  start: [test start date, start date, test start]
+  end: [test end date, end date, test completion date, test end]
+  signed: [signature date, signed date, date signed]
+  signature: [signature, tested by signature, technician signature, inspector signature]
+  employee: [employee id, employee number, employee no, technician id]
+
+chart_identifiers: [pressure test chart, pressure chart, test chart, pressure log]

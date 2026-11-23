@@ -1,0 +1,7 @@
+{
+  "document_type": "table/BOM",
+  "changes": [
+    {"v2_page": 1, "type": "modification", "bbox_v2": [460, 195, 555, 234], "v1_value": "2", "v2_value": "6"},
+    {"v2_page": 1, "type": "addition", "bbox_v2": [35, 234, 555, 273]}
+  ]
+}

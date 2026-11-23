@@ -1,0 +1,6 @@
+FROM python:3.12-slim
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+WORKDIR /tmp
+COPY --chmod=0444 docker/sandbox_entry.py /sandbox_entry.py
+USER 65534:65534
+ENTRYPOINT ["timeout", "--signal=KILL", "7s", "python", "-I", "-S", "-u", "/sandbox_entry.py"]

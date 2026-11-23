@@ -1,0 +1,12 @@
+.git
+.env
+.env.*
+.redline
+.venv
+.venvs
+.streamlit/secrets.toml
+**/__pycache__
+.pytest_cache
+*.egg-info
+build
+dist

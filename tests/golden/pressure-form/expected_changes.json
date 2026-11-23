@@ -1,0 +1,8 @@
+{
+  "document_type": "form",
+  "changes": [
+    {"v2_page": 1, "type": "modification", "bbox_v2": [260, 137, 394, 160], "v1_value": "100 psi", "v2_value": "120 psi"},
+    {"v2_page": 1, "type": "addition", "bbox_v2": [260, 190, 394, 213], "v1_value": null, "v2_value": "G-204"},
+    {"v2_page": 1, "type": "deletion", "bbox_v2": [416, 133, 522, 163]}
+  ]
+}
